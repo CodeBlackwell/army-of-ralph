@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "army-of-ralph"
+version = "0.1.0"
+description = "Autonomous Claude CLI orchestrator — solo iteration or parallel agents in waves, driven by PRDs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "LeChristopher Blackwell" }]
+keywords = ["claude", "agents", "orchestration", "autonomous", "prd", "codegen"]
+dependencies = ["tqdm>=4.65"]
+
+[project.urls]
+Homepage = "https://github.com/CodeBlackwell/army-of-ralph"
+Source = "https://github.com/CodeBlackwell/army-of-ralph"
+
+[project.scripts]
+ralph = "ralph.cli:main"
+
+[tool.setuptools]
+packages = ["ralph"]

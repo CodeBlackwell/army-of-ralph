@@ -1,0 +1,56 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  brew:
+    needs: pypi
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve sdist url + sha from PyPI
+        id: sdist
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 10); do
+            META=$(curl -fsSL "https://pypi.org/pypi/army-of-ralph/${VERSION}/json") && break
+            echo "PyPI not ready, retry $i..."; sleep 15
+          done
+          URL=$(echo "$META" | python3 -c "import sys,json;print(next(f['url'] for f in json.load(sys.stdin)['urls'] if f['packagetype']=='sdist'))")
+          SHA=$(echo "$META" | python3 -c "import sys,json;print(next(f['digests']['sha256'] for f in json.load(sys.stdin)['urls'] if f['packagetype']=='sdist'))")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Push updated formula to tap
+        env:
+          DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
+          URL: ${{ steps.sdist.outputs.url }}
+          SHA: ${{ steps.sdist.outputs.sha }}
+        run: |
+          mkdir -p ~/.ssh && echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519" git clone git@github.com:CodeBlackwell/homebrew-tap.git tap
+          cd tap
+          curl -fsSL "https://raw.githubusercontent.com/CodeBlackwell/army-of-ralph/${GITHUB_REF_NAME}/packaging/ralph.rb" -o Formula/ralph.rb
+          sed -i "s|REPLACE_URL|${URL}|; s|REPLACE_SHA|${SHA}|" Formula/ralph.rb
+          git config user.name "army-of-ralph-ci"
+          git config user.email "ci@codeblackwell.ai"
+          git add Formula/ralph.rb
+          git commit -m "ralph ${GITHUB_REF_NAME}"
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519" git push

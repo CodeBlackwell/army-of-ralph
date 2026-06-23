@@ -1,0 +1,59 @@
+# Example Agent Progress
+# Wave: 1 (PARALLEL)
+# Stories: US-010 to US-015
+
+## Status: NOT_STARTED
+
+## Stories
+
+[ ] US-010: User Registration
+    - [ ] Create /register route with form fields
+    - [ ] Validate email format and password strength
+    - [ ] Show loading state during registration
+    - [ ] Display error messages for validation failures
+    - [ ] Redirect to /dashboard on success
+    - [ ] Send verification email
+    - [ ] Typecheck passes
+
+[ ] US-011: User Login
+    - [ ] Create /login route with email and password fields
+    - [ ] Show loading state during authentication
+    - [ ] Display error messages for invalid credentials
+    - [ ] Redirect to /dashboard on success
+    - [ ] Support "remember me" functionality
+    - [ ] Typecheck passes
+
+[ ] US-012: Password Reset Request
+    - [ ] Create /forgot-password route with email input
+    - [ ] Send password reset email via Supabase
+    - [ ] Show success message after email sent
+    - [ ] Handle invalid email gracefully
+    - [ ] Typecheck passes
+
+[ ] US-013: Password Reset Completion
+    - [ ] Create /reset-password route
+    - [ ] Validate new password meets requirements
+    - [ ] Show success message and redirect to login
+    - [ ] Handle expired/invalid tokens
+    - [ ] Typecheck passes
+
+[ ] US-014: Session Management
+    - [ ] Implement session refresh on page load
+    - [ ] Handle session expiration gracefully
+    - [ ] Show "session expired" message when appropriate
+    - [ ] Redirect to login when session invalid
+    - [ ] Typecheck passes
+
+[ ] US-015: Logout
+    - [ ] Add logout button to user menu
+    - [ ] Clear all session data on logout
+    - [ ] Redirect to home page after logout
+    - [ ] Typecheck passes
+
+## Notes
+(Agent will append learnings here as it works)
+
+---
+
+## Completion Signal
+(When all stories are done, agent writes the delivered-complete tag here)
