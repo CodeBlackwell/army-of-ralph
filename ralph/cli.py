@@ -26,7 +26,8 @@ def _cmd_run(args) -> int:
     target_dir = resolved.parent if resolved.is_file() else resolved
     army = args.army or detect_mode(target_dir)
     ralph = Ralph(target, args.max_iterations or 10, args.sleep or 2,
-                  army=army, quiet=args.quiet or args.json, model=args.model)
+                  army=army, quiet=args.quiet or args.json, model=args.model,
+                  prototype=args.prototype)
 
     if not args.json:
         return ralph.run()
@@ -49,7 +50,7 @@ def _cmd_campaign(args) -> int:
         Path(args.target), args.max_iterations or 10, args.sleep or 2,
         force_army=args.army, continue_on_fail=args.continue_on_fail,
         only=only, resume=args.resume, quiet=args.quiet, json_output=args.json,
-        model=args.model,
+        model=args.model, prototype=args.prototype,
     )
 
 
@@ -110,6 +111,9 @@ def _build_parser() -> argparse.ArgumentParser:
     common.add_argument("-m", "--model",
                         help="Claude model for every agent (e.g. sonnet, opus, haiku); "
                              "passed through to `claude --model`")
+    common.add_argument("--prototype", action="store_true",
+                        help="proof-of-concept mode: agents build the bare minimum and "
+                             "the verifier rejects any feature beyond the stories (YAGNI)")
     common.add_argument("-q", "--quiet", action="store_true",
                         help="suppress the Claude output stream and per-iteration banners")
     common.add_argument("--json", action="store_true",

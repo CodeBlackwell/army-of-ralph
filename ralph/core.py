@@ -44,6 +44,29 @@ def format_duration(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
+# Prepended to worker prompts in --prototype mode (YAGNI proof-of-concept).
+PROTOTYPE_DIRECTIVE = """## PROTOTYPE MODE — build the minimum proof of concept
+You are building a throwaway PoC, not production code. Hard rules:
+- Implement ONLY what the current story explicitly requires. Nothing extra.
+- NO error handling beyond preventing an immediate crash.
+- NO logging, config systems, validation, caching, retries, or abstraction layers.
+- NO tests unless a story explicitly asks for one (typecheck gates still apply).
+- NO future-proofing, extensibility, design patterns, or unrequested features.
+- Prefer the fewest lines and language built-ins over new dependencies.
+- If a requirement is ambiguous, pick the simplest interpretation and move on.
+If you are about to add something "just in case", STOP and leave it out.
+
+"""
+
+# Extra verifier criterion in --prototype mode: scope creep is a failure.
+PROTOTYPE_VERIFY = (
+    "\n## Prototype scope check\n"
+    "This is a prototype. Also REJECT (do not write the verified tag) if the agent "
+    "added error handling, logging, config, caching, tests, abstraction layers, or "
+    "any feature beyond the listed stories. Record the scope creep in the FAILED section.\n"
+)
+
+
 class Ralph:
     """Autonomous coding agent runner."""
 
@@ -53,11 +76,13 @@ class Ralph:
     VERIFIED_TAG = "<verified>COMPLETE</verified>"      # Reviewer-confirmed
 
     def __init__(self, target: Path, max_iterations: int, sleep_seconds: int,
-                 army: bool = False, quiet: bool = False, model: str | None = None):
+                 army: bool = False, quiet: bool = False, model: str | None = None,
+                 prototype: bool = False):
         self.max_iterations = max_iterations
         self.sleep_seconds = sleep_seconds
         self.army_mode = army
         self.quiet = quiet
+        self.prototype = prototype
         self.start_time = time.time()
 
         # Base argv for every Claude call; --model is passed through when set.
@@ -210,7 +235,8 @@ class Ralph:
 
     def _build_prompt(self) -> str:
         """Build the prompt for Claude."""
-        return f"""You are Ralph, an autonomous coding agent. Do exactly ONE task per iteration.
+        prototype = PROTOTYPE_DIRECTIVE if self.prototype else ""
+        return f"""{prototype}You are Ralph, an autonomous coding agent. Do exactly ONE task per iteration.
 
 ## Target Files
 - PRD: {self.prd_file}
@@ -449,6 +475,7 @@ After completing your task, just end your response. Ralph tracks progress automa
             f"If anything is missing, broken, or incomplete:\n"
             f"  Do NOT write the verified tag.\n"
             f"  Append a '## Verification FAILED' section to {pf} listing what's wrong.\n"
+            + (PROTOTYPE_VERIFY if self.prototype else "")
         )
 
     def _verify_agent(self, agent_name: str) -> bool:
@@ -495,8 +522,9 @@ After completing your task, just end your response. Ralph tracks progress automa
             print(f"Error: Agent spec not found: {agent_file}")
             sys.exit(1)
         spec = agent_file.read_text(encoding="utf-8")
+        prototype = PROTOTYPE_DIRECTIVE if self.prototype else ""
         return (
-            f"You are {agent_name}-agent (Wave {wave}). Implement ALL your assigned stories.\n\n"
+            f"{prototype}You are {agent_name}-agent (Wave {wave}). Implement ALL your assigned stories.\n\n"
             f"## Your Specification\n{spec}\n\n"
             f"## Rules\n"
             f"1. Read {progress_file} first for any prior learnings\n"

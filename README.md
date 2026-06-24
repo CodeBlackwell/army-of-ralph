@@ -92,6 +92,17 @@ WAVE_1_GATE="cd my-project && npm run typecheck && npm test"
 
 Run `ralph install-skill` to install the `/prd` Claude Code skill, then use `/prd` to generate PRDs in the right shape for either mode. For hand-authoring, `ralph init <name>` scaffolds a directory from the bundled templates (in `ralph/templates/`).
 
+## Prototype Mode
+
+`--prototype` turns Ralph into a proof-of-concept builder. It prepends a YAGNI directive to every agent prompt: implement only what the story names, no error handling beyond preventing a crash, no logging/config/caching/validation/abstraction, no tests unless asked, no future-proofing. In army mode it also tells the verifier to *reject* any work that added features beyond the listed stories, so scope creep fails the gate instead of passing silently.
+
+```bash
+ralph my-feature --prototype
+ralph campaign PRDs --prototype --model haiku
+```
+
+Drop the flag and re-run to harden the prototype into production code later.
+
 ## Project Structure (army mode)
 
 ```
@@ -118,6 +129,7 @@ shared options (run, campaign):
   -a, --army          Force army mode (otherwise auto-detected from agents/ dir)
   -m, --model MODEL   Claude model for every agent (e.g. sonnet, opus, haiku);
                       passed through to `claude --model`
+  --prototype         Proof-of-concept mode: build the bare minimum, no extras (YAGNI)
   -q, --quiet         Suppress the Claude output stream and per-iteration banners
   --json              Emit a JSON summary on stdout (human text goes to stderr)
   --no-color          Disable ANSI color (also honors NO_COLOR / non-TTY)
