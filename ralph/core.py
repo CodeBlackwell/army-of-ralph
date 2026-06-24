@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from . import ui
+
 try:
     from tqdm import tqdm
 except ImportError:
@@ -51,11 +53,17 @@ class Ralph:
     VERIFIED_TAG = "<verified>COMPLETE</verified>"      # Reviewer-confirmed
 
     def __init__(self, target: Path, max_iterations: int, sleep_seconds: int,
-                 army: bool = False):
+                 army: bool = False, quiet: bool = False, model: str | None = None):
         self.max_iterations = max_iterations
         self.sleep_seconds = sleep_seconds
         self.army_mode = army
+        self.quiet = quiet
         self.start_time = time.time()
+
+        # Base argv for every Claude call; --model is passed through when set.
+        self.base_cmd = ["claude", "--dangerously-skip-permissions"]
+        if model:
+            self.base_cmd += ["--model", model]
 
         # Resolve paths
         self.prd_file, self.progress_file, self.target_dir = self._resolve_paths(target)
@@ -255,7 +263,7 @@ After completing your task, just end your response. Ralph tracks progress automa
         """Run Claude CLI, streaming output in real-time and returning it."""
         try:
             process = subprocess.Popen(
-                ["claude", "--dangerously-skip-permissions", "-p", prompt],
+                [*self.base_cmd, "-p", prompt],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -263,7 +271,8 @@ After completing your task, just end your response. Ralph tracks progress automa
             )
             output_lines: list[str] = []
             for line in process.stdout:
-                print(line, end="", flush=True)
+                if not self.quiet:
+                    print(line, end="", flush=True)
                 output_lines.append(line)
             process.wait()
             return "".join(output_lines)
@@ -305,20 +314,14 @@ After completing your task, just end your response. Ralph tracks progress automa
         """Display task progress bar."""
         bar_width = 40
         filled = int(progress.percentage * bar_width / 100)
-        bar = "█" * filled + "░" * (bar_width - filled)
+        bar_text = "█" * filled + "░" * (bar_width - filled)
 
-        # Color based on progress
-        if progress.percentage < 25:
-            color = "\033[31m"  # Red
-        elif progress.percentage < 50:
-            color = "\033[33m"  # Yellow
-        elif progress.percentage < 75:
-            color = "\033[34m"  # Blue
-        else:
-            color = "\033[32m"  # Green
-        reset = "\033[0m"
+        # Color based on progress (red → yellow → blue → green)
+        pct = progress.percentage
+        code = "31" if pct < 25 else "33" if pct < 50 else "34" if pct < 75 else "32"
+        bar = ui.paint(bar_text, code)
 
-        print(f"\n  {color}{bar}{reset} {progress.percentage:5.1f}% ({progress.completed}/{progress.total} tasks)")
+        print(f"\n  {bar} {pct:5.1f}% ({progress.completed}/{progress.total} tasks)")
         print(f"  Remaining: {progress.remaining} tasks\n")
 
     def _print_summary(self, title: str, iterations: int, total_time: float, tasks_done: int, progress: TaskProgress) -> None:
@@ -470,7 +473,7 @@ After completing your task, just end your response. Ralph tracks progress automa
         log_path = self.target_dir / "logs" / f"{agent_name}-verify.log"
         with open(log_path, "w", encoding="utf-8") as log_fh:
             subprocess.run(
-                ["claude", "--dangerously-skip-permissions", "-p", prompt],
+                [*self.base_cmd, "-p", prompt],
                 stdout=log_fh, stderr=subprocess.STDOUT, text=True, timeout=600,
             )
 
@@ -512,7 +515,7 @@ After completing your task, just end your response. Ralph tracks progress automa
         log_fh = open(log_path, "w", encoding="utf-8")
         try:
             proc = subprocess.Popen(
-                ["claude", "--dangerously-skip-permissions", "-p", prompt],
+                [*self.base_cmd, "-p", prompt],
                 stdout=log_fh, stderr=subprocess.STDOUT, text=True,
             )
         except Exception:
@@ -673,14 +676,13 @@ After completing your task, just end your response. Ralph tracks progress automa
         )
 
         for i in pbar:
-            print("\n" + "=" * 43)
-            print(f"  Iteration {i} of {self.max_iterations}")
-
-            current_gate = self.detect_current_gate()
-            if current_gate:
-                print(f"  {current_gate}")
-
-            print("=" * 43)
+            if not self.quiet:
+                print("\n" + "=" * 43)
+                print(f"  Iteration {i} of {self.max_iterations}")
+                current_gate = self.detect_current_gate()
+                if current_gate:
+                    print(f"  {current_gate}")
+                print("=" * 43)
 
             iter_start = time.time()
             result = self._run_claude(prompt)

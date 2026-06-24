@@ -1,62 +1,154 @@
-"""CLI entry point — resolves args, then runs a single PRD or a campaign."""
+"""CLI entry point — subcommands: run, campaign, init, install-skill."""
 
 import argparse
+import json
+import sys
+from importlib.resources import files
 from pathlib import Path
 
+from . import ui
 from .campaign import find_prd_dirs, run_campaign
 from .core import Ralph, detect_mode
+from . import __version__
+
+SUBCOMMANDS = {"run", "campaign", "init", "install-skill"}
+
+
+def _cmd_run(args) -> int:
+    target = Path(args.target)
+    resolved = target.resolve()
+    if resolved.is_dir() and not (resolved / "PRD.md").exists() and find_prd_dirs(resolved):
+        print(f"No PRD.md in {resolved}, but it holds PRD subdirs. "
+              f"Run a campaign: ralph campaign {args.target}", file=sys.stderr)
+        return 1
+
+    target_dir = resolved.parent if resolved.is_file() else resolved
+    army = args.army or detect_mode(target_dir)
+    ralph = Ralph(target, args.max_iterations or 10, args.sleep or 2,
+                  army=army, quiet=args.quiet or args.json, model=args.model)
+
+    if not args.json:
+        return ralph.run()
+
+    real_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    code = ralph.run()
+    sys.stdout = real_stdout
+    prog = ralph.count_tasks()
+    print(json.dumps({
+        "mode": "army" if army else "solo", "target": str(ralph.target_dir),
+        "exit": code, "completed": prog.completed, "total": prog.total,
+    }))
+    return code
+
+
+def _cmd_campaign(args) -> int:
+    only = [t for t in args.only.split(",") if t] if args.only else None
+    return run_campaign(
+        Path(args.target), args.max_iterations or 10, args.sleep or 2,
+        force_army=args.army, continue_on_fail=args.continue_on_fail,
+        only=only, resume=args.resume, quiet=args.quiet, json_output=args.json,
+        model=args.model,
+    )
+
+
+def _cmd_init(args) -> int:
+    templates = files("ralph") / "templates"
+    dest = Path(args.name)
+    if dest.exists():
+        print(f"{dest} already exists", file=sys.stderr)
+        return 1
+    dest.mkdir(parents=True)
+    (dest / "PRD.md").write_text(
+        (templates / "PRD-template.md").read_text(encoding="utf-8"), encoding="utf-8")
+    if args.army:
+        (dest / "agents").mkdir()
+        (dest / "progress").mkdir()
+        (dest / "agents" / "example-agent.md").write_text(
+            (templates / "example-agent.md").read_text(encoding="utf-8"), encoding="utf-8")
+        (dest / "progress" / "example-progress.txt").write_text(
+            (templates / "example-progress.txt").read_text(encoding="utf-8"), encoding="utf-8")
+    run = f"ralph {dest} --army" if args.army else f"ralph {dest}"
+    print(f"Scaffolded {dest}/  →  edit PRD.md, then run: {run}")
+    return 0
+
+
+def _cmd_install_skill(args) -> int:
+    src = (files("ralph") / "skills" / "prd-SKILL.md").read_text(encoding="utf-8")
+    dest = Path.home() / ".claude" / "skills" / "prd" / "SKILL.md"
+    if dest.exists() and not args.force:
+        print(f"{dest} already exists (use --force to overwrite)", file=sys.stderr)
+        return 1
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(src, encoding="utf-8")
+    print(f"Installed PRD skill → {dest}\nUse it in Claude Code with /prd")
+    return 0
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="ralph",
-        description="Ralph — autonomous Claude CLI orchestrator (solo + army)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  ralph PRDs/01-feature               # one PRD (mode auto-detected)
-  ralph PRDs/01-feature 50            # 50 iterations (solo)
-  ralph PRDs/01-feature --army        # force army mode
-  ralph PRDs --all                    # run every PRD subdir, in order
-        """,
-    )
-    parser.add_argument("target", nargs="?", default=".",
-                        help="PRD dir/file, or a parent dir of PRD subdirs (with --all)")
-    parser.add_argument("max_iterations", nargs="?", type=int, default=None,
-                        help="Max iterations for solo mode (default: 10)")
-    parser.add_argument("sleep", nargs="?", type=int, default=None,
-                        help="Sleep seconds between iterations (default: 2)")
-    parser.add_argument("-t", "--target", dest="target_named", help="Target dir or file")
-    parser.add_argument("-n", "--max-iterations", dest="max_iterations_named", type=int)
-    parser.add_argument("-s", "--sleep", dest="sleep_named", type=int)
-    parser.add_argument("-a", "--army", action="store_true",
-                        help="Force army mode (otherwise auto-detected from agents/ dir)")
-    parser.add_argument("--all", action="store_true",
-                        help="Run every */PRD.md subdir under target, in name order")
+        prog="ralph", description="Autonomous Claude CLI orchestrator (solo + army)")
+    parser.add_argument("--version", action="version", version=f"ralph {__version__}")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("-a", "--army", action="store_true",
+                        help="force army mode (otherwise auto-detected from an agents/ dir)")
+    common.add_argument("-m", "--model",
+                        help="Claude model for every agent (e.g. sonnet, opus, haiku); "
+                             "passed through to `claude --model`")
+    common.add_argument("-q", "--quiet", action="store_true",
+                        help="suppress the Claude output stream and per-iteration banners")
+    common.add_argument("--json", action="store_true",
+                        help="emit a JSON summary on stdout (human text goes to stderr)")
+    common.add_argument("--no-color", action="store_true", help="disable ANSI color")
+
+    for name, func, help_text in (
+        ("run", _cmd_run, "run a single PRD (mode auto-detected)"),
+        ("campaign", _cmd_campaign, "run every */PRD.md subdir under a dir, in name order"),
+    ):
+        sp = sub.add_parser(name, parents=[common], help=help_text)
+        sp.add_argument("target", nargs="?", default=".",
+                        help="PRD dir/file, or a parent dir of PRD subdirs")
+        sp.add_argument("max_iterations", nargs="?", type=int, default=None,
+                        help="max iterations for solo mode (default: 10)")
+        sp.add_argument("sleep", nargs="?", type=int, default=None,
+                        help="sleep seconds between iterations (default: 2)")
+        sp.set_defaults(func=func)
+    camp = sub.choices["campaign"]
+    camp.add_argument("--continue-on-fail", action="store_true",
+                      help="keep going after a PRD fails instead of stopping")
+    camp.add_argument("--only", help="comma-separated name tokens; run only matching PRD dirs")
+    camp.add_argument("--resume", action="store_true",
+                      help="skip PRD dirs that are already fully complete")
+
+    init = sub.add_parser("init", help="scaffold a new PRD directory from templates")
+    init.add_argument("name", help="directory to create")
+    init.add_argument("-a", "--army", action="store_true",
+                      help="also scaffold agents/ + progress/ for army mode")
+    init.set_defaults(func=_cmd_init)
+
+    skill = sub.add_parser("install-skill", help="install the PRD skill into ~/.claude/skills")
+    skill.add_argument("--force", action="store_true", help="overwrite an existing skill")
+    skill.set_defaults(func=_cmd_install_skill)
     return parser
 
 
 def main() -> int:
-    args = _build_parser().parse_args()
-    target = Path(args.target_named or args.target)
-    max_iterations = args.max_iterations_named or args.max_iterations or 10
-    sleep_seconds = args.sleep_named or args.sleep or 2
+    argv = sys.argv[1:]
+    if not argv:
+        argv = ["--help"]
+    elif argv[0] not in SUBCOMMANDS and argv[0] not in ("-h", "--help", "--version"):
+        argv = ["run"] + argv  # bare `ralph <dir>` is shorthand for `ralph run <dir>`
+
+    args = _build_parser().parse_args(argv)
+    if getattr(args, "no_color", False) or getattr(args, "json", False):
+        ui.set_color(False)
 
     try:
-        if args.all:
-            return run_campaign(target, max_iterations, sleep_seconds, force_army=args.army)
-
-        resolved = target.resolve()
-        target_dir = resolved.parent if resolved.is_file() else resolved
-        if resolved.is_dir() and not (resolved / "PRD.md").exists() and find_prd_dirs(resolved):
-            print(f"No PRD.md in {resolved}, but it holds PRD subdirs. "
-                  f"Run a campaign with: ralph {target} --all")
-            return 1
-
-        army = args.army or detect_mode(target_dir)
-        return Ralph(target, max_iterations, sleep_seconds, army=army).run()
+        return args.func(args)
     except KeyboardInterrupt:
-        print("\n\nInterrupted by user.")
+        print("\n\nInterrupted by user.", file=sys.stderr)
         return 130
 
 

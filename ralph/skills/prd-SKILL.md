@@ -430,7 +430,7 @@ Before saving any files, verify:
 After all files are saved, print the run command for the user:
 
 - **Solo:** `ralph <PRD_DIR> [max_iterations]`
-- **Army:** `ralph <PRD_DIR> --army` (or just `ralph <PRD_DIR>` — army is auto-detected when an `agents/` dir is present)
-- **All PRDs:** `ralph <PARENT_DIR> --all` runs every `*/PRD.md` subdir in name order
+- **Army:** `ralph <PRD_DIR> --army` (or just `ralph <PRD_DIR>`; army is auto-detected when an `agents/` dir is present)
+- **All PRDs:** `ralph campaign <PARENT_DIR>` runs every `*/PRD.md` subdir in name order
 
 Example: `ralph PRDs/24-sub1hr-optimization --army`
