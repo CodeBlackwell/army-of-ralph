@@ -32,6 +32,7 @@ ralph campaign PRDs             # run every PRD subdir in name order
 | `ralph run <dir>` | Run a single PRD (default; the `run` is optional) |
 | `ralph campaign <dir>` | Run every `*/PRD.md` subdir under `<dir>`, in name order |
 | `ralph init <name>` | Scaffold a new PRD directory (`--army` adds `agents/` + `progress/`) |
+| `ralph watch <dir>` | Live read-only dashboard for a run (auto-started by `run`) |
 | `ralph install-skill` | Install the `/prd` generator skill into `~/.claude/skills` |
 | `ralph uninstall-skill` | Remove the `/prd` skill from `~/.claude/skills` |
 
@@ -92,6 +93,24 @@ WAVE_1_GATE="cd my-project && npm run typecheck && npm test"
 
 Run `ralph install-skill` to install the `/prd` Claude Code skill, then use `/prd` to generate PRDs in the right shape for either mode. For hand-authoring, `ralph init <name>` scaffolds a directory from the bundled templates (in `ralph/templates/`).
 
+## Live Dashboard
+
+`ralph run` launches the orchestrator under a live, read-only dashboard by default. The agents' output is captured to `<dir>/ralph.log` while the terminal shows a redrawn-in-place status table: per agent, a progress bar (`[x]`/total), status (working / verifying / done), and the last line of its log so you can see what it is doing right now.
+
+```
+RALPH WATCH  02-auth                       refreshed 14:03:22
+
+  AGENT       PROGRESS         STATUS     DOING NOW
+  foundation  ██████████ 5/5   done       done
+  auth        ██████░░░░ 3/6   working    editing app/auth/login.tsx
+  profile     ███░░░░░░░ 1/4   working    running typecheck
+
+  9/15 tasks · 2 working · 0 verifying · 1 done
+  read-only · Ctrl-C to exit
+```
+
+Ctrl-C stops the run and its agents cleanly. The dashboard is skipped automatically for `--json` or non-TTY output (CI), and you can opt out with `ralph run <dir> --no-watch` to stream inline as before. To watch a run happening in another pane (or review a finished one), use `ralph watch <dir>` directly. It is purely a file reader, so it never affects the run.
+
 ## Prototype Mode
 
 `--prototype` turns Ralph into a proof-of-concept builder. It prepends a YAGNI directive to every agent prompt: implement only what the story names, no error handling beyond preventing a crash, no logging/config/caching/validation/abstraction, no tests unless asked, no future-proofing. In army mode it also tells the verifier to *reject* any work that added features beyond the listed stories, so scope creep fails the gate instead of passing silently.
@@ -118,6 +137,7 @@ PRDs/02-auth/
 ```
 ralph run <target> [max_iterations] [sleep] [options]   # `run` is optional
 ralph campaign <target> [max_iterations] [sleep] [options]
+ralph watch <target>                                    # live dashboard (read-only)
 ralph init <name> [--army]
 ralph install-skill [--force]
 
@@ -130,6 +150,7 @@ shared options (run, campaign):
   -m, --model MODEL   Claude model for every agent (e.g. sonnet, opus, haiku);
                       passed through to `claude --model`
   --prototype         Proof-of-concept mode: build the bare minimum, no extras (YAGNI)
+  --no-watch          (run) stream inline instead of using the live dashboard
   -q, --quiet         Suppress the Claude output stream and per-iteration banners
   --json              Emit a JSON summary on stdout (human text goes to stderr)
   --no-color          Disable ANSI color (also honors NO_COLOR / non-TTY)

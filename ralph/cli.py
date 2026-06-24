@@ -6,29 +6,19 @@ import sys
 from importlib.resources import files
 from pathlib import Path
 
-from . import ui
+from . import ui, watch
 from .campaign import find_prd_dirs, run_campaign
 from .core import Ralph, detect_mode
 from . import __version__
 
-SUBCOMMANDS = {"run", "campaign", "init", "install-skill", "uninstall-skill"}
+SUBCOMMANDS = {"run", "campaign", "init", "install-skill", "uninstall-skill", "watch"}
 SKILL_PATH = Path.home() / ".claude" / "skills" / "prd" / "SKILL.md"
 
 
-def _cmd_run(args) -> int:
-    target = Path(args.target)
-    resolved = target.resolve()
-    if resolved.is_dir() and not (resolved / "PRD.md").exists() and find_prd_dirs(resolved):
-        print(f"No PRD.md in {resolved}, but it holds PRD subdirs. "
-              f"Run a campaign: ralph campaign {args.target}", file=sys.stderr)
-        return 1
-
-    target_dir = resolved.parent if resolved.is_file() else resolved
-    army = args.army or detect_mode(target_dir)
+def _run_direct(args, target: Path, army: bool) -> int:
     ralph = Ralph(target, args.max_iterations or 10, args.sleep or 2,
                   army=army, quiet=args.quiet or args.json, model=args.model,
                   prototype=args.prototype)
-
     if not args.json:
         return ralph.run()
 
@@ -42,6 +32,47 @@ def _cmd_run(args) -> int:
         "exit": code, "completed": prog.completed, "total": prog.total,
     }))
     return code
+
+
+def _child_argv(args, army: bool) -> list[str]:
+    """Rebuild this run as a child `ralph run ... --no-watch` invocation."""
+    child = [sys.executable, "-m", "ralph", "run", str(args.target)]
+    if args.max_iterations is not None:
+        child.append(str(args.max_iterations))
+    if args.sleep is not None:
+        child.append(str(args.sleep))
+    if army:
+        child.append("--army")
+    if args.model:
+        child += ["--model", args.model]
+    if args.prototype:
+        child.append("--prototype")
+    if args.no_color:
+        child.append("--no-color")
+    child.append("--no-watch")
+    return child
+
+
+def _cmd_run(args) -> int:
+    target = Path(args.target)
+    resolved = target.resolve()
+    if resolved.is_dir() and not (resolved / "PRD.md").exists() and find_prd_dirs(resolved):
+        print(f"No PRD.md in {resolved}, but it holds PRD subdirs. "
+              f"Run a campaign: ralph campaign {args.target}", file=sys.stderr)
+        return 1
+
+    target_dir = resolved.parent if resolved.is_file() else resolved
+    army = args.army or detect_mode(target_dir)
+
+    # Default: run the orchestrator under the live dashboard. Opt out with --no-watch,
+    # and skip it automatically for --json or non-TTY output (CI).
+    if args.no_watch or args.json or not sys.stdout.isatty():
+        return _run_direct(args, target, army)
+    return watch.supervise(_child_argv(args, army), target_dir)
+
+
+def _cmd_watch(args) -> int:
+    return watch.run(Path(args.target))
 
 
 def _cmd_campaign(args) -> int:
@@ -132,6 +163,8 @@ def _build_parser() -> argparse.ArgumentParser:
         sp.add_argument("sleep", nargs="?", type=int, default=None,
                         help="sleep seconds between iterations (default: 2)")
         sp.set_defaults(func=func)
+    sub.choices["run"].add_argument("--no-watch", action="store_true",
+                                    help="run inline instead of under the live dashboard")
     camp = sub.choices["campaign"]
     camp.add_argument("--continue-on-fail", action="store_true",
                       help="keep going after a PRD fails instead of stopping")
@@ -152,6 +185,10 @@ def _build_parser() -> argparse.ArgumentParser:
     unskill = sub.add_parser("uninstall-skill",
                              help="remove the PRD skill from ~/.claude/skills")
     unskill.set_defaults(func=_cmd_uninstall_skill)
+
+    w = sub.add_parser("watch", help="live read-only dashboard for a PRD dir")
+    w.add_argument("target", nargs="?", default=".", help="PRD directory to watch")
+    w.set_defaults(func=_cmd_watch)
     return parser
 
 

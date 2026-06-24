@@ -6,3 +6,5 @@ dist/
 .venv/
 venv/
 .DS_Store
+ralph.log
+ralph_timing.log
