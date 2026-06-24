@@ -33,6 +33,7 @@ ralph campaign PRDs             # run every PRD subdir in name order
 | `ralph campaign <dir>` | Run every `*/PRD.md` subdir under `<dir>`, in name order |
 | `ralph init <name>` | Scaffold a new PRD directory (`--army` adds `agents/` + `progress/`) |
 | `ralph install-skill` | Install the `/prd` generator skill into `~/.claude/skills` |
+| `ralph uninstall-skill` | Remove the `/prd` skill from `~/.claude/skills` |
 
 ## Targeting One PRD or All of Them
 

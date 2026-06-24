@@ -11,7 +11,8 @@ from .campaign import find_prd_dirs, run_campaign
 from .core import Ralph, detect_mode
 from . import __version__
 
-SUBCOMMANDS = {"run", "campaign", "init", "install-skill"}
+SUBCOMMANDS = {"run", "campaign", "init", "install-skill", "uninstall-skill"}
+SKILL_PATH = Path.home() / ".claude" / "skills" / "prd" / "SKILL.md"
 
 
 def _cmd_run(args) -> int:
@@ -75,13 +76,25 @@ def _cmd_init(args) -> int:
 
 def _cmd_install_skill(args) -> int:
     src = (files("ralph") / "skills" / "prd-SKILL.md").read_text(encoding="utf-8")
-    dest = Path.home() / ".claude" / "skills" / "prd" / "SKILL.md"
-    if dest.exists() and not args.force:
-        print(f"{dest} already exists (use --force to overwrite)", file=sys.stderr)
+    if SKILL_PATH.exists() and not args.force:
+        print(f"{SKILL_PATH} already exists (use --force to overwrite)", file=sys.stderr)
         return 1
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(src, encoding="utf-8")
-    print(f"Installed PRD skill → {dest}\nUse it in Claude Code with /prd")
+    SKILL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SKILL_PATH.write_text(src, encoding="utf-8")
+    print(f"Installed PRD skill → {SKILL_PATH}\nUse it in Claude Code with /prd")
+    return 0
+
+
+def _cmd_uninstall_skill(args) -> int:
+    if not SKILL_PATH.exists():
+        print(f"No PRD skill installed at {SKILL_PATH}", file=sys.stderr)
+        return 1
+    SKILL_PATH.unlink()
+    try:
+        SKILL_PATH.parent.rmdir()  # remove the now-empty prd/ dir
+    except OSError:
+        pass
+    print(f"Removed PRD skill → {SKILL_PATH}")
     return 0
 
 
@@ -131,6 +144,10 @@ def _build_parser() -> argparse.ArgumentParser:
     skill = sub.add_parser("install-skill", help="install the PRD skill into ~/.claude/skills")
     skill.add_argument("--force", action="store_true", help="overwrite an existing skill")
     skill.set_defaults(func=_cmd_install_skill)
+
+    unskill = sub.add_parser("uninstall-skill",
+                             help="remove the PRD skill from ~/.claude/skills")
+    unskill.set_defaults(func=_cmd_uninstall_skill)
     return parser
 
 
