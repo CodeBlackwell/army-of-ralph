@@ -12,15 +12,19 @@ Build a PRD formatted for either **Ralph Solo** (single iterating agent) or **Ra
 
 ## Step 1: Ask Mode + Scope
 
-Ask the user TWO things upfront:
+Ask the user THREE things upfront:
 
 **1. Mode:** Ralph Solo or Ralph's Army?
 - **Solo** — one agent iterating through `PRD.md`, one task per iteration. Best for <20 stories, single-domain work.
 - **Army** — multiple agents in waves with file ownership. Best for 20+ stories, multi-domain, parallelizable work.
 
-**2. Feature description:** What are we building?
+**2. Build intent:** Prototype (PoC) or Production?
+- **Prototype** — the bare proof of concept. Demonstrate the core idea works, nothing more. Run with `ralph ... --prototype`. See the Prototype Mode section below; it changes how you size stories and write criteria.
+- **Production** — the full, hardened implementation (the default if unstated).
 
-If the user already specified mode or feature in their prompt, skip asking for that part.
+**3. Feature description:** What are we building?
+
+If the user already specified any of these in their prompt, skip asking for that part.
 
 ---
 
@@ -93,6 +97,21 @@ Each criterion must be **verifiable** — something Ralph can CHECK.
 - "Handles edge cases"
 
 **Always include** `"Typecheck passes"` as final criterion. For UI stories also add `"Verify changes work in browser"`.
+
+---
+
+## Prototype Mode (PoC)
+
+When build intent is **Prototype**, the PRD itself must encode YAGNI. The `--prototype` runtime flag constrains how agents build; this section constrains how you plan, so the two reinforce each other. Apply ALL of these:
+
+1. **Cut to the happy path.** Include only P0 stories that demonstrate the core idea. Drop every P1/P2, every "nice to have", every secondary flow. If a story is not required to show the concept works, delete it.
+2. **One core action per story, even smaller than usual.** Prototype stories should be the smallest slice that produces a visible result.
+3. **Strip the acceptance criteria.** Keep only the criterion that proves the core behavior, plus `"Typecheck passes"` (and `"Verify changes work in browser"` for UI). Do NOT write criteria for: error handling, validation, loading/empty/error states, edge cases, auth, accessibility, responsiveness, persistence beyond what the demo needs, or performance. Those are non-goals, not unwritten work.
+4. **Write an aggressive Non-Goals section.** Explicitly list what is excluded so no agent infers it later. Use these categories: error handling beyond crash prevention, logging, config systems, validation, caching, retries, tests, abstraction layers, auth, and any feature not named in a story.
+5. **Fewer agents (Army).** Prefer Solo for a prototype. If using Army, collapse to the minimum number of agents (often one foundation plus one feature agent). Skip the polish agent entirely.
+6. **Lean gates.** Wave gates should be typecheck only. Do not require a test suite the prototype will not have.
+
+The litmus test for a prototype story: if you removed it, would the concept still be demonstrable? If yes, remove it.
 
 ---
 
@@ -415,6 +434,7 @@ Before saving any files, verify:
 - [ ] Every story has "Typecheck passes"
 - [ ] UI stories have "Verify changes work in browser"
 - [ ] Non-goals section defines clear boundaries
+- [ ] **Prototype:** Only P0 happy-path stories; criteria stripped to core behavior + typecheck; aggressive Non-Goals listing the YAGNI categories
 - [ ] **Solo:** Saved `PRD.md` + `progress.txt`
 - [ ] **Army:** Saved `PRD.md` + all `agents/*.md` + all `progress/*.txt`
 - [ ] **Army:** Ownership map has no overlapping write paths
@@ -432,5 +452,7 @@ After all files are saved, print the run command for the user:
 - **Solo:** `ralph <PRD_DIR> [max_iterations]`
 - **Army:** `ralph <PRD_DIR> --army` (or just `ralph <PRD_DIR>`; army is auto-detected when an `agents/` dir is present)
 - **All PRDs:** `ralph campaign <PARENT_DIR>` runs every `*/PRD.md` subdir in name order
+
+When build intent is **Prototype**, append `--prototype` to the command so the runtime YAGNI constraints match the PRD (e.g. `ralph <PRD_DIR> --prototype`).
 
 Example: `ralph PRDs/24-sub1hr-optimization --army`
