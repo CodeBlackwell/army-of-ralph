@@ -20,19 +20,18 @@ ralph install-skill             # add the /prd skill to ~/.claude/skills (option
 ralph my-feature                # run one PRD — mode auto-detected
 ralph my-feature 20             # solo, max 20 iterations
 ralph my-feature --army         # force army mode
-ralph campaign PRDs             # run every PRD subdir in name order
+ralph PRDs                      # a parent of PRD dirs — run each in name order
 ```
 
-`ralph <dir>` is shorthand for `ralph run <dir>`. Mode is auto-detected per PRD: a directory with an `agents/` subdir runs in **army** mode, otherwise **solo**. `--army` forces it on.
+`ralph <path>` is shorthand for `ralph run <path>`, and `run` figures out what the path is: a single PRD (it has a `PRD.md`) or a parent of PRD dirs (it holds subdirs that do). Mode is auto-detected per PRD too: a directory with an `agents/` subdir runs in **army** mode, otherwise **solo**. `--army` forces it on.
 
 ### Commands
 
 | Command | What it does |
 |---|---|
-| `ralph run <dir>` | Run a single PRD (default; the `run` is optional) |
-| `ralph campaign <dir>` | Run every `*/PRD.md` subdir under `<dir>`, in name order |
+| `ralph run <path>` | Run a PRD, or a parent of PRD dirs (auto-detected). `run` is optional |
+| `ralph watch <path>` | Live read-only dashboard for a run (auto-started by `run`) |
 | `ralph init <name>` | Scaffold a new PRD directory (`--army` adds `agents/` + `progress/`) |
-| `ralph watch <dir>` | Live read-only dashboard for a run (auto-started by `run`) |
 | `ralph install-skill` | Install the `/prd` generator skill into `~/.claude/skills` |
 | `ralph uninstall-skill` | Remove the `/prd` skill from `~/.claude/skills` |
 
@@ -48,9 +47,9 @@ PRDs/
 ```
 
 - **One PRD:** `ralph PRDs/02-auth` runs just that directory.
-- **All PRDs:** `ralph campaign PRDs` discovers every `*/PRD.md` under `PRDs/`, runs them in name order (so number your dirs), and stops the campaign if one fails. Each subdir's mode is auto-detected.
+- **All PRDs:** `ralph PRDs` (pointing at the parent) discovers every `*/PRD.md`, runs them in name order (so number your dirs), and stops if one fails. Each subdir's mode is auto-detected, and the dashboard follows the active PRD.
 
-Campaign flags: `--continue-on-fail` keeps going past a failure, `--resume` skips PRDs that are already fully complete, and `--only 02,04` runs just the dirs whose names contain those tokens.
+Multi-PRD flags: `--continue-on-fail` keeps going past a failure, `--resume` skips PRDs that are already fully complete, and `--only 02,04` runs just the dirs whose names contain those tokens.
 
 ## Modes
 
@@ -109,7 +108,7 @@ RALPH WATCH  02-auth                       refreshed 14:03:22
   read-only · Ctrl-C to exit
 ```
 
-Ctrl-C stops the run and its agents cleanly. The dashboard is skipped automatically for `--json` or non-TTY output (CI), and you can opt out with `ralph run <dir> --no-watch` to stream inline as before. To watch a run happening in another pane (or review a finished one), use `ralph watch <dir>` directly. It is purely a file reader, so it never affects the run.
+When the target is a parent of PRD dirs, the dashboard follows the active PRD with a `PRD 2/3 · 02-auth` header as each one runs. Ctrl-C stops the run and its agents cleanly. The dashboard is skipped automatically for `--json` or non-TTY output (CI), and you can opt out with `ralph run <dir> --no-watch` to stream inline as before. To watch a run happening in another pane (or review a finished one), use `ralph watch <dir>` directly. It is purely a file reader, so it never affects the run.
 
 ## Prototype Mode
 
@@ -117,7 +116,7 @@ Ctrl-C stops the run and its agents cleanly. The dashboard is skipped automatica
 
 ```bash
 ralph my-feature --prototype
-ralph campaign PRDs --prototype --model haiku
+ralph PRDs --prototype --model haiku
 ```
 
 Drop the flag and re-run to harden the prototype into production code later.
@@ -136,26 +135,25 @@ PRDs/02-auth/
 
 ```
 ralph run <target> [max_iterations] [sleep] [options]   # `run` is optional
-ralph campaign <target> [max_iterations] [sleep] [options]
 ralph watch <target>                                    # live dashboard (read-only)
 ralph init <name> [--army]
 ralph install-skill [--force]
 
-  target              PRD dir/file, or a parent dir of PRD subdirs
+  target              a PRD dir/file, or a parent dir holding PRD dirs
   max_iterations      Max iterations for solo mode (default: 10)
   sleep               Seconds between iterations (default: 2)
 
-shared options (run, campaign):
+options:
   -a, --army          Force army mode (otherwise auto-detected from agents/ dir)
   -m, --model MODEL   Claude model for every agent (e.g. sonnet, opus, haiku);
                       passed through to `claude --model`
   --prototype         Proof-of-concept mode: build the bare minimum, no extras (YAGNI)
-  --no-watch          (run) stream inline instead of using the live dashboard
+  --no-watch          Stream inline instead of using the live dashboard
   -q, --quiet         Suppress the Claude output stream and per-iteration banners
   --json              Emit a JSON summary on stdout (human text goes to stderr)
   --no-color          Disable ANSI color (also honors NO_COLOR / non-TTY)
 
-campaign options:
+multi-PRD options (apply when the target is a parent of PRD dirs):
   --continue-on-fail  Keep going after a PRD fails instead of stopping
   --only TOKENS       Comma-separated name tokens; run only matching PRD dirs
   --resume            Skip PRD dirs that are already fully complete

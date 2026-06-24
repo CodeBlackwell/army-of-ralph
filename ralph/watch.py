@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from . import ui
+from .campaign import find_prd_dirs
 from .core import Ralph
 
 DELIVERED = Ralph.DELIVERED_TAG
@@ -37,6 +38,34 @@ def _counts(text: str) -> tuple[int, int]:
     total = len(re.findall(r"- \[ \]|- \[x\]", text))
     done = len(re.findall(r"- \[x\]", text))
     return done, total
+
+
+def _sub_complete(prd_dir: Path) -> bool:
+    """True if every checkbox across a PRD dir's progress is [x]."""
+    done = total = 0
+    for _, pf, _ in _rows(prd_dir):
+        try:
+            text = pf.read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        dn, tt = _counts(text)
+        done += dn
+        total += tt
+    return total > 0 and done == total
+
+
+def _resolve(target: Path) -> tuple[Path, str | None]:
+    """Pick the dir to render: the target itself (single PRD), or the active subdir
+    of a collection. Returns (render_dir, campaign_header_or_None)."""
+    if (target / "agents").is_dir() or (target / "PRD.md").exists():
+        return target, None
+    subs = find_prd_dirs(target)
+    if not subs:
+        return target, None
+    for i, prd_dir in enumerate(subs, 1):
+        if not _sub_complete(prd_dir):
+            return prd_dir, f"PRD {i}/{len(subs)} · {prd_dir.name}"
+    return subs[-1], f"PRD {len(subs)}/{len(subs)} · {subs[-1].name}"
 
 
 def _status(text: str, done: int, total: int) -> str:
@@ -72,11 +101,15 @@ def _bar(done: int, total: int) -> str:
 
 
 def _frame(target: Path) -> str:
+    render_dir, header = _resolve(target)
     cols = shutil.get_terminal_size((100, 24)).columns
-    rows = list(_rows(target))
+    rows = list(_rows(render_dir))
     name_w = min(max((len(n) for n, _, _ in rows), default=5), 16)
 
-    lines = [f"RALPH WATCH  {target.name}".ljust(42) + f"refreshed {time.strftime('%H:%M:%S')}", ""]
+    lines = [f"RALPH WATCH  {target.name}".ljust(42) + f"refreshed {time.strftime('%H:%M:%S')}"]
+    if header:
+        lines.append("  " + header)
+    lines.append("")
     lines.append(f"  {'AGENT'.ljust(name_w)}  {'PROGRESS'.ljust(BAR_WIDTH + 5)}  "
                  f"{'STATUS'.ljust(9)}  DOING NOW")
 
@@ -113,8 +146,9 @@ def _draw(target: Path) -> None:
 def run(target: Path) -> int:
     """Standalone dashboard — watch a run already happening (or finished)."""
     target = target.resolve()
-    if not list(_rows(target)):
-        print(f"Nothing to watch under {target} (no agents/ or PRD.md)", file=sys.stderr)
+    render_dir, _ = _resolve(target)
+    if not list(_rows(render_dir)):
+        print(f"Nothing to watch under {target} (no agents/, PRD.md, or PRD subdirs)", file=sys.stderr)
         return 1
     sys.stdout.write("\033[?25l")  # hide cursor
     try:

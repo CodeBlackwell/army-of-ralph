@@ -1,4 +1,4 @@
-"""CLI entry point — subcommands: run, campaign, init, install-skill."""
+"""CLI entry point — subcommands: run, watch, init, install-skill, uninstall-skill."""
 
 import argparse
 import json
@@ -11,7 +11,7 @@ from .campaign import find_prd_dirs, run_campaign
 from .core import Ralph, detect_mode
 from . import __version__
 
-SUBCOMMANDS = {"run", "campaign", "init", "install-skill", "uninstall-skill", "watch"}
+SUBCOMMANDS = {"run", "init", "install-skill", "uninstall-skill", "watch"}
 SKILL_PATH = Path.home() / ".claude" / "skills" / "prd" / "SKILL.md"
 
 
@@ -34,14 +34,24 @@ def _run_direct(args, target: Path, army: bool) -> int:
     return code
 
 
-def _child_argv(args, army: bool) -> list[str]:
+def _run_collection_direct(args, parent: Path) -> int:
+    only = [t for t in args.only.split(",") if t] if args.only else None
+    return run_campaign(
+        parent, args.max_iterations or 10, args.sleep or 2,
+        force_army=args.army, continue_on_fail=args.continue_on_fail,
+        only=only, resume=args.resume, quiet=args.quiet, json_output=args.json,
+        model=args.model, prototype=args.prototype,
+    )
+
+
+def _child_argv(args) -> list[str]:
     """Rebuild this run as a child `ralph run ... --no-watch` invocation."""
     child = [sys.executable, "-m", "ralph", "run", str(args.target)]
     if args.max_iterations is not None:
         child.append(str(args.max_iterations))
     if args.sleep is not None:
         child.append(str(args.sleep))
-    if army:
+    if args.army:
         child.append("--army")
     if args.model:
         child += ["--model", args.model]
@@ -49,40 +59,38 @@ def _child_argv(args, army: bool) -> list[str]:
         child.append("--prototype")
     if args.no_color:
         child.append("--no-color")
+    if args.only:
+        child += ["--only", args.only]
+    if args.resume:
+        child.append("--resume")
+    if args.continue_on_fail:
+        child.append("--continue-on-fail")
     child.append("--no-watch")
     return child
 
 
 def _cmd_run(args) -> int:
+    """Run one PRD or a parent of PRD dirs (auto-detected), under the live dashboard."""
     target = Path(args.target)
     resolved = target.resolve()
-    if resolved.is_dir() and not (resolved / "PRD.md").exists() and find_prd_dirs(resolved):
-        print(f"No PRD.md in {resolved}, but it holds PRD subdirs. "
-              f"Run a campaign: ralph campaign {args.target}", file=sys.stderr)
+    single = resolved.is_file() or (resolved / "PRD.md").exists()
+    subdirs = find_prd_dirs(resolved) if (not single and resolved.is_dir()) else []
+    if not single and not subdirs:
+        print(f"No PRD.md at {resolved} or in its subdirs", file=sys.stderr)
         return 1
 
-    target_dir = resolved.parent if resolved.is_file() else resolved
-    army = args.army or detect_mode(target_dir)
-
-    # Default: run the orchestrator under the live dashboard. Opt out with --no-watch,
-    # and skip it automatically for --json or non-TTY output (CI).
+    # Default: orchestrate under the live dashboard. Skip it for --no-watch,
+    # --json, or non-TTY output (CI), and run inline instead.
     if args.no_watch or args.json or not sys.stdout.isatty():
-        return _run_direct(args, target, army)
-    return watch.supervise(_child_argv(args, army), target_dir)
+        if single:
+            target_dir = resolved.parent if resolved.is_file() else resolved
+            return _run_direct(args, target, args.army or detect_mode(target_dir))
+        return _run_collection_direct(args, resolved)
+    return watch.supervise(_child_argv(args), resolved)
 
 
 def _cmd_watch(args) -> int:
     return watch.run(Path(args.target))
-
-
-def _cmd_campaign(args) -> int:
-    only = [t for t in args.only.split(",") if t] if args.only else None
-    return run_campaign(
-        Path(args.target), args.max_iterations or 10, args.sleep or 2,
-        force_army=args.army, continue_on_fail=args.continue_on_fail,
-        only=only, resume=args.resume, quiet=args.quiet, json_output=args.json,
-        model=args.model, prototype=args.prototype,
-    )
 
 
 def _cmd_init(args) -> int:
@@ -151,26 +159,22 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="emit a JSON summary on stdout (human text goes to stderr)")
     common.add_argument("--no-color", action="store_true", help="disable ANSI color")
 
-    for name, func, help_text in (
-        ("run", _cmd_run, "run a single PRD (mode auto-detected)"),
-        ("campaign", _cmd_campaign, "run every */PRD.md subdir under a dir, in name order"),
-    ):
-        sp = sub.add_parser(name, parents=[common], help=help_text)
-        sp.add_argument("target", nargs="?", default=".",
-                        help="PRD dir/file, or a parent dir of PRD subdirs")
-        sp.add_argument("max_iterations", nargs="?", type=int, default=None,
-                        help="max iterations for solo mode (default: 10)")
-        sp.add_argument("sleep", nargs="?", type=int, default=None,
-                        help="sleep seconds between iterations (default: 2)")
-        sp.set_defaults(func=func)
-    sub.choices["run"].add_argument("--no-watch", action="store_true",
-                                    help="run inline instead of under the live dashboard")
-    camp = sub.choices["campaign"]
-    camp.add_argument("--continue-on-fail", action="store_true",
-                      help="keep going after a PRD fails instead of stopping")
-    camp.add_argument("--only", help="comma-separated name tokens; run only matching PRD dirs")
-    camp.add_argument("--resume", action="store_true",
-                      help="skip PRD dirs that are already fully complete")
+    run = sub.add_parser("run", parents=[common],
+                         help="run a PRD dir, or a parent of PRD dirs (auto-detected)")
+    run.add_argument("target", nargs="?", default=".",
+                     help="a PRD dir/file, or a parent dir holding PRD dirs")
+    run.add_argument("max_iterations", nargs="?", type=int, default=None,
+                     help="max iterations for solo mode (default: 10)")
+    run.add_argument("sleep", nargs="?", type=int, default=None,
+                     help="sleep seconds between iterations (default: 2)")
+    run.add_argument("--no-watch", action="store_true",
+                     help="run inline instead of under the live dashboard")
+    run.add_argument("--continue-on-fail", action="store_true",
+                     help="(multi-PRD) keep going after a PRD fails instead of stopping")
+    run.add_argument("--only", help="(multi-PRD) comma-separated name tokens; run only matching dirs")
+    run.add_argument("--resume", action="store_true",
+                     help="(multi-PRD) skip PRD dirs that are already fully complete")
+    run.set_defaults(func=_cmd_run)
 
     init = sub.add_parser("init", help="scaffold a new PRD directory from templates")
     init.add_argument("name", help="directory to create")

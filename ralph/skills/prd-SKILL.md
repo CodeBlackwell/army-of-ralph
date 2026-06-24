@@ -451,7 +451,7 @@ After all files are saved, print the run command for the user:
 
 - **Solo:** `ralph <PRD_DIR> [max_iterations]`
 - **Army:** `ralph <PRD_DIR> --army` (or just `ralph <PRD_DIR>`; army is auto-detected when an `agents/` dir is present)
-- **All PRDs:** `ralph campaign <PARENT_DIR>` runs every `*/PRD.md` subdir in name order
+- **All PRDs:** `ralph <PARENT_DIR>` (point at the parent) runs every `*/PRD.md` subdir in name order
 
 When build intent is **Prototype**, append `--prototype` to the command so the runtime YAGNI constraints match the PRD (e.g. `ralph <PRD_DIR> --prototype`).
 
