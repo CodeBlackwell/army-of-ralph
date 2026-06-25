@@ -10,6 +10,8 @@
 
 [2-3 sentences describing what the project does and who it's for]
 
+**Companion:** generate `RATIONALE.md` alongside this PRD (tiered capabilities, business use case per section, stack + scaling decisions). It is human-facing and not consumed by Ralph.
+
 ---
 
 ## Orchestrator Config
@@ -75,6 +77,24 @@ WAVE_2_GATE="cd my-project && npm run typecheck && npm test"
 |----|-------|----------|
 | US-040 | User can change password | P0 |
 | US-041 | User can manage notifications | P1 |
+
+---
+
+## Deferred Phase (optional)
+
+Work that is real but out of the current build. A heading containing **`NOT core scope`** tells Ralph to skip the whole section by default, so a core run stops when core is done. Build it later with `ralph … --include-deferred`.
+
+```markdown
+# Scaling & Hardening (Phase 2 — NOT core scope)
+
+> Deferred. Depends on Wave 0–2 core. Invariant: [the one rule that must hold across this phase].
+> Do not build during core scope.
+
+### US-090: [Deferred story title]
+**Acceptance Criteria:**
+- [ ] [criterion]
+- [ ] Typecheck passes
+```
 
 ---
 

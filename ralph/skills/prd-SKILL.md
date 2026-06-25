@@ -71,6 +71,11 @@ Ralph spawns fresh per iteration — no memory of previous work. Too-big stories
 
 **Rule of thumb:** If you can't describe the change in 2-3 sentences, it's too big.
 
+**Capability test:** If a story's acceptance criteria bundle 4+ distinct capabilities (each able to fail on its own), split it. Keep story "mass" roughly uniform across the PRD — same-shaped cells are easier to schedule and verify.
+
+### Splitting late: sub-story IDs
+When you split a story *after* numbering — or want to signal "these are one thing decomposed" — suffix with letters (`US-018a`, `US-018b`, `US-018c`) instead of renumbering. Sibling IDs (US-019+) stay stable so references don't shift. Put shared/cross-cutting scaffolding in the first sub-story (`…a`) so the rest stay thin.
+
 ---
 
 ## Step 4: Order by Dependencies
@@ -82,7 +87,21 @@ Stories execute in priority order. Earlier stories must NOT depend on later ones
 
 ---
 
-## Step 5: Write Acceptance Criteria
+## Step 5: Phase & Group the Scope (optional)
+
+When a build has a clear **core** plus a set of **deferred / scaling / stretch** work, don't dump the extras into Non-Goals — emit them as a distinctly-labeled phase section so the boundary is explicit and the deferred work stays specced. **Ralph skips deferred-phase sections by default** (a heading marked `(… — NOT core scope)`), so the core run stops cleanly; `ralph … --include-deferred` opts into building them.
+
+- Core stories first (US-001…), then a `---` rule, then `# [Phase Name] (Phase N — NOT core scope)`.
+- Open the phase with a **blockquote barrier note**: (a) it depends on core being complete, (b) the governing invariant that must hold across the phase, (c) "do not build during core scope."
+- Within a large phase, group stories under **thematic track headers** (`## Track A — …`, `## Track B — …`). Order tracks so later ones depend on earlier ones.
+
+**The governing-invariant note is the highest-value line in a phased PRD** — the one rule that must never break (e.g. "all controls stay in the deterministic core; the agent/edge layer only operates it"). State it once, at the top of the phase, as the membrane keeping the new layer from invading the core.
+
+Deferred-phase cells keep the same shape as core cells (Description + verifiable criteria + "Typecheck passes"), but may be coarser if they are roadmap rather than immediate build. The heading text **must** contain `NOT core scope` for Ralph to recognize and skip it.
+
+---
+
+## Step 6: Write Acceptance Criteria
 
 Each criterion must be **verifiable** — something Ralph can CHECK.
 
@@ -144,8 +163,23 @@ Save `PRD.md` and `progress.txt` in the working directory.
 ### US-002: [Title]
 ...
 
+---
+
+# [Scaling / Phase 2 Name] (Phase 2 — NOT core scope)   ← OPTIONAL — see Step 5; omit if no deferred work. Heading MUST contain "NOT core scope" so Ralph skips it.
+
+> Deferred. Depends on US-001…US-NNN. Invariant: [the one rule that must hold across this phase].
+> Do not build during core scope.
+
+## Track A — [Theme]
+### US-013: [Title]
+...
+
+## Track B — [Theme]
+### US-018a: [Title]   ← late split → a/b/c, see Step 3
+...
+
 ## Non-Goals
-- [What this does NOT include]
+- [Permanent exclusions. If a phase section is used above, point here to it as deferred (deferred ≠ never).]
 
 ## Technical Considerations
 - [Known constraints, components to reuse]
@@ -421,6 +455,34 @@ Format per story:
 
 ---
 
+## Companion Doc: RATIONALE.md (Tiers, Use Cases, Deliberations)
+
+**Always generate `RATIONALE.md` alongside `PRD.md` — it is a required output of every PRD, not optional.** `PRD.md` is the declarative "what" Ralph executes; `RATIONALE.md` is the "why" for humans — tiered options, business justification, stack and scaling reasoning. Keep them separate so the PRD stays clean and machine-focused. RATIONALE.md is **human-facing and never passed to Ralph.** Four sections:
+
+### 1. Tiered Capabilities
+A menu by commitment level — what to build and *when to pull it in*. Map each tier to PRD story ranges.
+
+| Tier | Name | What it adds | Pull it in when… | PRD stories |
+|------|------|--------------|------------------|-------------|
+| T0 | Core (must) | the working spine | always | US-001… |
+| T1 | Hardening (should) | integrity / concurrency | first real users | US-013… |
+| T2 | Advanced (could) | the differentiator layer | a clear signal appears | US-018… |
+| T3 | Later (not yet specced) | speculative scale work | a proven scale signal | — |
+
+### 2. Business Use Case per Section
+One plain sentence per PRD section/story — the business reason it exists, in language a non-engineer approves. Forces every story to justify itself.
+
+### 3. Stack Deliberations
+Per major choice: **chosen / alternative / why / cost-to-switch-later.** Making reversibility explicit is the point — a cheap-to-switch choice needs less agonizing.
+
+### 4. Scaling Options & Indicators
+Per aspect: current state, the scaling move, and the **observable trigger signal** that says "do it now" — a metric or event (p95 latency, DB CPU, concurrent writers, agent becomes primary consumer), never a vibe. Pair every scaling option with its indicator.
+
+### Chaining with /tot
+Sections 3 and 4 are deliberations. For a genuinely contested call (e.g. "Postgres now or later?", "MCP vs native tool-calling?"), optionally run the **/tot** skill first (Empiricist · Systems Thinker · Critical Analyst), then distill its conclusion into the table and link the full analysis under a `## Deliberation Log` heading. Use /tot for contested calls only; don't ceremonialize obvious ones.
+
+---
+
 ## Pre-Save Checklist
 
 Before saving any files, verify:
@@ -434,6 +496,12 @@ Before saving any files, verify:
 - [ ] Every story has "Typecheck passes"
 - [ ] UI stories have "Verify changes work in browser"
 - [ ] Non-goals section defines clear boundaries
+- [ ] Story "mass" roughly uniform; no story bundles 4+ distinct capabilities (else split)
+- [ ] Late splits use `US-NNNa/b/c` suffixes with stable sibling IDs
+- [ ] (If phased) Deferred work is a labeled phase section whose heading contains "NOT core scope", not buried in Non-Goals
+- [ ] (If phased) Phase opens with a barrier note: depends-on + governing invariant + "don't build in core"
+- [ ] RATIONALE.md generated (always) and saved as a separate file, not merged into PRD.md
+- [ ] RATIONALE.md tiers map to PRD story ranges; every scaling option paired with a trigger indicator
 - [ ] **Prototype:** Only P0 happy-path stories; criteria stripped to core behavior + typecheck; aggressive Non-Goals listing the YAGNI categories
 - [ ] **Solo:** Saved `PRD.md` + `progress.txt`
 - [ ] **Army:** Saved `PRD.md` + all `agents/*.md` + all `progress/*.txt`
@@ -456,3 +524,7 @@ After all files are saved, print the run command for the user:
 When build intent is **Prototype**, append `--prototype` to the command so the runtime YAGNI constraints match the PRD (e.g. `ralph <PRD_DIR> --prototype`).
 
 Example: `ralph PRDs/24-sub1hr-optimization --army`
+
+If the PRD has a deferred phase (a `NOT core scope` section), tell the user Ralph builds **core only** by default and stops when core is done; add `--include-deferred` to build the phase sections too.
+
+Always mention the `RATIONALE.md` companion (tiers, business cases, stack/scaling decisions) generated alongside `PRD.md` — it is human-facing and **not** consumed by Ralph.

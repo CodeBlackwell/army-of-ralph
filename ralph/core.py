@@ -44,6 +44,46 @@ def format_duration(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
+# A deferred "phase" section — heading text contains "NOT core scope" (case-insensitive).
+# Ralph skips these by default so a core run stops once the core stories are done.
+_DEFERRED_HEADING = re.compile(r"^(#{1,6})\s+(.*not core scope.*)$", re.IGNORECASE)
+
+
+def strip_deferred_sections(content: str) -> str:
+    """Drop sections whose heading is marked 'NOT core scope'.
+
+    A deferred region runs from its heading to the next heading of the same or
+    higher level (equal/fewer '#'), or end of file. Returns content unchanged when
+    no such heading exists, so non-phased PRDs are unaffected.
+    """
+    lines = content.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        match = _DEFERRED_HEADING.match(lines[i])
+        if not match:
+            out.append(lines[i])
+            i += 1
+            continue
+        level = len(match.group(1))
+        i += 1
+        while i < len(lines):
+            heading = re.match(r"^(#{1,6})\s+", lines[i])
+            if heading and len(heading.group(1)) <= level:
+                break
+            i += 1
+    return "\n".join(out)
+
+
+# Prepended to the solo prompt unless --include-deferred: keep Ralph inside core scope.
+DEFERRED_SKIP_DIRECTIVE = (
+    "## SCOPE — core only\n"
+    "Ignore any PRD section whose heading contains 'NOT core scope' (deferred phase work). "
+    "Never implement, mark, or commit a story inside such a section. The first incomplete "
+    "[ ] task is the first one OUTSIDE any 'NOT core scope' section.\n\n"
+)
+
+
 # Prepended to worker prompts in --prototype mode (YAGNI proof-of-concept).
 PROTOTYPE_DIRECTIVE = """## PROTOTYPE MODE — build the minimum proof of concept
 You are building a throwaway PoC, not production code. Hard rules:
@@ -77,12 +117,13 @@ class Ralph:
 
     def __init__(self, target: Path, max_iterations: int, sleep_seconds: int,
                  army: bool = False, quiet: bool = False, model: str | None = None,
-                 prototype: bool = False):
+                 prototype: bool = False, include_deferred: bool = False):
         self.max_iterations = max_iterations
         self.sleep_seconds = sleep_seconds
         self.army_mode = army
         self.quiet = quiet
         self.prototype = prototype
+        self.include_deferred = include_deferred
         self.start_time = time.time()
 
         # Base argv for every Claude call; --model is passed through when set.
@@ -143,7 +184,7 @@ class Ralph:
 
         # Extract stories: ### US-NNN: Title lines, with optional **Agent:** on next line
         story_pattern = re.compile(
-            r"^### (US-\d+): (.+)$\n\*\*Agent:\*\* `([^`]+)`",
+            r"^### (US-\d+[a-z]?): (.+)$\n\*\*Agent:\*\* `([^`]+)`",
             re.MULTILINE,
         )
         # Extract gate headers: ## GATE N — Name
@@ -202,6 +243,8 @@ class Ralph:
         if self.army_mode:
             return self._count_army_tasks()
         content = self.prd_file.read_text(encoding="utf-8")
+        if not self.include_deferred:
+            content = strip_deferred_sections(content)
         total = len(re.findall(r"- \[ \]|- \[x\]", content))
         completed = len(re.findall(r"- \[x\]", content))
         return TaskProgress(total=total, completed=completed)
@@ -236,7 +279,8 @@ class Ralph:
     def _build_prompt(self) -> str:
         """Build the prompt for Claude."""
         prototype = PROTOTYPE_DIRECTIVE if self.prototype else ""
-        return f"""{prototype}You are Ralph, an autonomous coding agent. Do exactly ONE task per iteration.
+        scope = "" if self.include_deferred else DEFERRED_SKIP_DIRECTIVE
+        return f"""{prototype}{scope}You are Ralph, an autonomous coding agent. Do exactly ONE task per iteration.
 
 ## Target Files
 - PRD: {self.prd_file}

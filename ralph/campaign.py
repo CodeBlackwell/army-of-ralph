@@ -40,7 +40,8 @@ def run_campaign(parent: Path, max_iterations: int, sleep_seconds: int, *,
                  force_army: bool = False, continue_on_fail: bool = False,
                  only: list[str] | None = None, resume: bool = False,
                  quiet: bool = False, json_output: bool = False,
-                 model: str | None = None, prototype: bool = False) -> int:
+                 model: str | None = None, prototype: bool = False,
+                 include_deferred: bool = False) -> int:
     """Run each selected subdir PRD in name order. Returns 0 if all succeed."""
     parent = parent.resolve()
     prd_dirs = _select(find_prd_dirs(parent), only)
@@ -71,7 +72,8 @@ def run_campaign(parent: Path, max_iterations: int, sleep_seconds: int, *,
         print(f"  PRD {index}/{len(prd_dirs)}: {prd_dir.name} [{mode}]")
         print(f"{'#' * 43}")
         code = Ralph(prd_dir, max_iterations, sleep_seconds,
-                     army=army, quiet=quiet, model=model, prototype=prototype).run()
+                     army=army, quiet=quiet, model=model, prototype=prototype,
+                     include_deferred=include_deferred).run()
         results.append({"name": prd_dir.name, "mode": mode, "exit": code, "skipped": False})
         if code != 0 and not continue_on_fail:
             print(f"\nCampaign stopped: {prd_dir.name} returned {code} "

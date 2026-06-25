@@ -18,7 +18,7 @@ SKILL_PATH = Path.home() / ".claude" / "skills" / "prd" / "SKILL.md"
 def _run_direct(args, target: Path, army: bool) -> int:
     ralph = Ralph(target, args.max_iterations or 10, args.sleep or 2,
                   army=army, quiet=args.quiet or args.json, model=args.model,
-                  prototype=args.prototype)
+                  prototype=args.prototype, include_deferred=args.include_deferred)
     if not args.json:
         return ralph.run()
 
@@ -40,7 +40,7 @@ def _run_collection_direct(args, parent: Path) -> int:
         parent, args.max_iterations or 10, args.sleep or 2,
         force_army=args.army, continue_on_fail=args.continue_on_fail,
         only=only, resume=args.resume, quiet=args.quiet, json_output=args.json,
-        model=args.model, prototype=args.prototype,
+        model=args.model, prototype=args.prototype, include_deferred=args.include_deferred,
     )
 
 
@@ -57,6 +57,8 @@ def _child_argv(args) -> list[str]:
         child += ["--model", args.model]
     if args.prototype:
         child.append("--prototype")
+    if args.include_deferred:
+        child.append("--include-deferred")
     if args.no_color:
         child.append("--no-color")
     if args.only:
@@ -158,6 +160,9 @@ def _build_parser() -> argparse.ArgumentParser:
     common.add_argument("--json", action="store_true",
                         help="emit a JSON summary on stdout (human text goes to stderr)")
     common.add_argument("--no-color", action="store_true", help="disable ANSI color")
+    common.add_argument("--include-deferred", action="store_true",
+                        help="also build deferred phase sections marked 'NOT core scope' "
+                             "(default: skip them and stop when core is done)")
 
     run = sub.add_parser("run", parents=[common],
                          help="run a PRD dir, or a parent of PRD dirs (auto-detected)")
